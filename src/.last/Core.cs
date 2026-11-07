@@ -408,6 +408,7 @@ namespace NCTool
                 if (ra == rb) continue;
                 var sa = members[ra]; var sb = members[rb];
                 if (sa.Overlaps(sb)) continue;
+                if (sa.Count + sb.Count > 2) continue;   // moi nut chi noi toi da 2 dau mut (khe ho joint 0.005 mm cua duong dan vao piercing cong khong bi lap kin, ca ViDu_AL_t19)
                 par[ra] = rb; sb.UnionWith(sa);
             }
             var rep = new Dictionary<int, double[]>();
@@ -952,13 +953,27 @@ namespace NCTool
         }
         static Prims Translate(Prims P, double dx, double dy) { return MapPrims(P, p => Pt(p[0] + dx, p[1] + dy)); }
 
-        class Analysis { public List<Seg> Outer; public BB Bb; public List<List<Seg>> Holes, Opens; public Circ OuterCircle; }
+        class Analysis { public List<Seg> Outer; public BB Bb; public List<List<Seg>> Holes, Opens; public Circ OuterCircle; public bool Drawn; }
+        // Day >= 19: DXF co the da ve san duong dan vao piercing cong (2 doan thang + cung R3) va khe ho joint -> bien ngoai la duong ho, cat dung theo duong ve
+        static bool DrawnLeadMode;
         static Analysis Analyze(Prims P)
         {
             var baseSegs = P.Segs.Where(s => s.Col == "L").ToList();
             var loops = GroupLoops(baseSegs);
             // Biên dạng/lỗ Layer 0 by layer phải khép kín; đường hở chỉ hợp lệ với màu xanh (khe cắt) hoặc đỏ (kẻ dấu)
             var openLoops = loops.Where(IsOpen).ToList();
+            if (DrawnLeadMode && openLoops.Count == 1 && Endpoints(openLoops[0]).Count == 2)
+            {
+                var open = openLoops[0]; var oe = Endpoints(open); var ob = LoopBBox(open);
+                double ocx = (ob.X0 + ob.X1) / 2, ocy = (ob.Y0 + ob.Y1) / 2;
+                var ostart = oe.OrderByDescending(e => Dist(e, Pt(ocx, ocy))).First();   // dau tu do xa tam nhat = dau duong dan vao
+                var chainO = ChainOpenFrom(open, ostart);
+                int lead = 0;   // doan dan vao: cac doan dau chuoi toi het cung nho dau tien (trong 4 doan dau)
+                for (int i = 0; i < Math.Min(4, chainO.Count); i++) if (chainO[i].T == 'A' && chainO[i].R <= 5 + 1e-9) { lead = i + 1; break; }
+                var partO = chainO.Skip(lead).ToList(); if (partO.Count == 0) partO = chainO;
+                var holesO = loops.Where(L => !IsOpen(L)).OrderByDescending(L => { var b = LoopBBox(L); return (b.X1 - b.X0) * (b.Y1 - b.Y0); }).ToList();
+                return new Analysis { Outer = chainO, Bb = LoopBBox(partO), Holes = holesO, Opens = new List<List<Seg>>(), Drawn = true };
+            }
             if (openLoops.Count > 0)
             {
                 var ends = openLoops.SelectMany(L => Endpoints(L)).Take(6).Select(p => "(" + Fmt(p[0]) + ", " + Fmt(p[1]) + ")").ToList();
@@ -995,9 +1010,10 @@ namespace NCTool
             double jointHole = (group.ToUpperInvariant() == "SUS" && t >= 19 - 1e-9) ? 1.0 : (group.ToUpperInvariant() == "AL" && t >= 19 - 1e-9) ? 0 : jointOut;   // do rong joint lo (SUS >= 19: 1.0, AL >= 19: 0)
             var warnings = new List<string>(prims0.Warnings);
             bool isSS = group.ToUpperInvariant() == "SS";
+            DrawnLeadMode = t >= 19 - 1e-9;
 
             // Thep SS day >= 19: moi goc (trong va ngoai, ke ca mat vat) phai duoc bo R, khong con goc nhon
-            if (Curved(group, t))
+            if (Curved(group, t) && !Analyze(prims0).Drawn)
             {
                 var A1 = Analyze(prims0);
                 var loops1 = new List<List<Seg>> { A1.Outer };
@@ -1026,7 +1042,17 @@ namespace NCTool
             // Bien ngoai co SPLINE hoac CUNG loi ra trai nhat (khong co canh thang dung sat diem trai nhat) va co canh day nam tren Ox:
             // khong xoay, dat goc theo bao diem dieu khien, duc o canh day (ca ViDu_Spline_1)
             bool splBottom = false;
-            if (!(prims0.Js.Count > 0 && prims0.Marks.ContainsKey("LJ")))
+            {   // Duong bien ngoai da ve san duong dan vao piercing cong (day >= 19): khong xoay, khong xet canh trai, cat dung theo duong ve
+                var aD = Analyze(prims0);
+                if (aD.Drawn)
+                {
+                    double[] shiftD = new double[] { 0, 0 }; Prims PrD = prims0;
+                    if (Math.Abs(aD.Bb.X0) > 1e-4 || Math.Abs(aD.Bb.Y0) > 1e-4) { shiftD = new[] { -aD.Bb.X0, -aD.Bb.Y0 }; PrD = Translate(prims0, shiftD[0], shiftD[1]); }
+                    P = PrD; A = Analyze(PrD); chShift = shiftD;
+                    warnings.Add("Biên ngoài là đường hở có sẵn đường dẫn vào piercing cong (dày ≥ 19): không xoay phôi, đục tại đầu tự do và cắt đúng theo đường vẽ");
+                }
+            }
+            if (A == null && !(prims0.Js.Count > 0 && prims0.Marks.ContainsKey("LJ")))
             {
                 var a0 = Analyze(prims0);
                 if (a0.OuterCircle == null)
@@ -1326,7 +1352,14 @@ namespace NCTool
                 emit(new List<Seg> { lead }, S1, false);
             };
             bool split = P.Js.Count > 0 && P.Marks.ContainsKey("LJ");
-            if (split)
+            if (A.Drawn)
+            {
+                double[] psD = sg[0].P;   // dau tu do cua duong ve
+                pierce(psD, 9010);
+                pos = emit(sg, psD, true);
+                body.Add("M121"); body.Add("M199"); body.Add("G01G40"); body.Add("M30");
+            }
+            else if (split)
             {
                 // sap xep LJ va cac J theo chieu CW tren bien ngoai, bat dau tu LJ; moi cap lien tiep (marker -> marker ke tiep) la 1 duong cat
                 double total = sg.Sum(x => x.T == 'L' ? Dist(x.P, x.Q) : x.R * x.Sweep), pLJ = PathPos(sg, P.Marks["LJ"]);

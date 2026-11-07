@@ -1,6 +1,6 @@
 # Quy tắc của DXF To NC Conversion Tool
 
-Cập nhật lần cuối: 04-11-2026. File này được cập nhật mỗi khi có quy tắc mới.
+Cập nhật lần cuối: 07-11-2026. File này được cập nhật mỗi khi có quy tắc mới.
 
 ## 1. Đầu vào DXF: đọc và phân loại
 
@@ -16,7 +16,7 @@ Cập nhật lần cuối: 04-11-2026. File này được cập nhật mỗi khi
 
 1. LWPOLYLINE (kể cả cung bulge) được đổi thành LINE và ARC. Khối INSERT được bung thành đối tượng thường.
 2. POLYLINE (cũ) và ELLIPSE: báo lỗi, cần Explode trước. INSERT tỉ lệ không đều hoặc đối xứng: báo lỗi.
-3. Các đầu mút cách nhau không quá 0.02 mm được nối thành một điểm, **chỉ giữa các đối tượng cùng màu** (từ 04-11-2026). Kegaki (đỏ) không bị nối vào biên ngoài. Ca 26-065663: đoạn kegaki kết thúc cách đỉnh biên ngoài 0.01 mm (y = 12.49) là cố ý, nên đầu đó không chạm biên, không dùng làm điểm đục, và đường cắt dừng đúng tại y = 12.49.
+3. Các đầu mút cách nhau không quá 0.02 mm được nối thành một điểm, **chỉ giữa các đối tượng cùng màu** (từ 04-11-2026). Kegaki (đỏ) không bị nối vào biên ngoài. Ca 26-065663: đoạn kegaki kết thúc cách đỉnh biên ngoài 0.01 mm (y = 12.49) là cố ý, nên đầu đó không chạm biên, không dùng làm điểm đục, và đường cắt dừng đúng tại y = 12.49. Mỗi điểm nối tối đa 2 đầu mút: nếu gộp sẽ tạo nút có 3 đầu mút thì không gộp. Nhờ vậy khe hở joint 0.005 mm của đường dẫn vào đã vẽ sẵn (mục 6.3) không bị lấp kín.
 4. Đường hở màu by layer (biên ngoài hoặc lỗ không khép kín): báo lỗi kèm tọa độ chỗ hở. Đường hở chỉ hợp lệ với màu xanh lá (khe cắt) và đỏ (kẻ dấu).
 5. Biên dạng ngoài là vòng kín lớn nhất. Nếu một CIRCLE by layer lớn hơn mọi vòng kín thì đó là phôi tròn.
 6. Vòng kín xanh lá được xử lý như lỗ.
@@ -140,6 +140,10 @@ Piercing ngoài nằm ngoài biên, cách đúng bằng piercing ngoài, dẫn v
 
 1. **SS dày từ 19:** DXF phải bo hết các góc nhọn (trong và ngoài, kể cả mặt vát). Còn góc nhọn thì báo lỗi kèm tọa độ. SUS và AL không có kiểm tra này.
 2. Piercing lỗ là 10 mm cho cả ba nhóm. Joint lỗ: SS 0, SUS 1, AL 0.
+3. **Đường dẫn vào đã vẽ sẵn trong DXF (từ 07-11-2026, ca ViDu_AL_t19):** DXF có thể đã vẽ sẵn đường dẫn vào piercing cong (hai đoạn thẳng nối với một cung R3) cùng khe hở joint ngay trên biên ngoài. Khi đó biên ngoài là một đường hở, có đúng hai đầu mút, và tool không báo lỗi hở mà cắt đúng theo đường vẽ:
+   - Điểm đục là đầu tự do xa tâm nhất của đường hở (đầu nằm ngoài phôi, ví dụ (−10, 60)). Đường cắt bắt đầu bằng `G01G41` đi theo từng đoạn đã vẽ và kết thúc tại đầu kia (ví dụ (0, 52.995)). Độ rộng joint chính là khe hở đã vẽ (0.005 mm ở ca mẫu), không tra theo bảng mục 2.
+   - Không xoay phôi, không xét cạnh trái. Gốc tọa độ lấy theo phần biên ngoài sau đường dẫn vào, nên đường dẫn có thể nằm ngoài gốc (x âm). Kích thước ở tiêu đề tính cả điểm đục.
+   - Áp dụng cho dày ≥ 19 của mọi nhóm (SS, SUS, AL). Bỏ kiểm tra góc nhọn của SS dày ≥ 19 với đường hở kiểu này. Các lỗ và đường cắt khác xử lý như bình thường.
 
 ## 7. Cấu trúc file NC
 
@@ -189,6 +193,7 @@ NC của phần mềm khớp từng dòng với các ví dụ sau (trừ dòng t
 | Vi_Du_20 (26-065395) | SS dày 3.2, phôi cong đục ở cạnh đáy trái nhất, lỗ tròn vào bên trái (mục 4.4.2, 4.3.7) |
 | Vi_Du_21 (26-065394) | SS dày 3.2, như trên, thêm lỗ chữ nhật nghiêng vào giữa cạnh ngắn nhất (mục 4.3.6) |
 | Vi_Du_22 (26-065663) | SS dày 6, kegaki chữ L có một đầu cách biên 0.01 mm; chọn đúng đầu chạm biên để đục (mục 1.3, 4.1.3) |
+| Vi_Du_23 (ViDu_AL_t19) | AL dày 19, DXF đã vẽ sẵn đường dẫn vào piercing cong và khe joint 0.005 mm, cắt đúng theo đường vẽ (mục 6.3) |
 | NC_Tool_Fix: 26-062754 | Thông số CU (6, 0.7), lỗ chữ nhật xoay 45° vào giữa cạnh từ đỉnh thấp nhất (mục 4.3.6) |
 | NC_Tool_Fix: 26-062203 | SS dày 6, kegaki hở chạm cạnh vát, kéo dài theo hướng đường (mục 4.1.3) |
 
@@ -215,3 +220,4 @@ NC của phần mềm khớp từng dòng với các ví dụ sau (trừ dòng t
 | 01-11-2026 | Lỗ tròn thử vào trái, phải, dưới, trên theo khoảng cách > 3 mm (4.3.7); nhiều cạnh trái chọn cạnh thấp nhất thay vì dài nhất (4.4.1); cạnh thẳng > 100 mm của phôi cong vào 40 mm từ đỉnh dưới (4.4.7). Kegaki tròn vẫn không G41 (mẫu 26-064456T có dòng G01G41 do nhầm, đã xác nhận). Thêm Vi_Du_17..19 |
 | 03-11-2026 | Lỗ nghiêng vào cạnh ngắn nhất, bằng nhau lấy cạnh thấp (4.3.6); nhiều cạnh đáy thì chọn cạnh trái nhất (4.4.2). Thêm Vi_Du_20, 21. (Mẫu T lần đầu của hai ca này có lỗ tròn vào bên phải do nhầm, mẫu gửi lại vào bên trái; không thêm quy tắc riêng cho lỗ tròn)
 | 04-11-2026 | Nối đầu mút chỉ giữa các đối tượng cùng màu, kegaki không dính vào biên ngoài (1.3), theo ca 26-065663. Thêm Vi_Du_22 |
+| 07-11-2026 | Dày ≥ 19: biên ngoài hở có sẵn đường dẫn vào piercing cong thì cắt theo đường vẽ (6.3); mỗi nút nối tối đa 2 đầu mút (1.3). Thêm Vi_Du_23 |
