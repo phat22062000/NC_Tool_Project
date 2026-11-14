@@ -1,6 +1,6 @@
 # Quy tắc của DXF To NC Conversion Tool
 
-Cập nhật lần cuối: 07-11-2026. File này được cập nhật mỗi khi có quy tắc mới.
+Cập nhật lần cuối: 14-11-2026. File này được cập nhật mỗi khi có quy tắc mới.
 
 ## 1. Đầu vào DXF: đọc và phân loại
 
@@ -45,10 +45,14 @@ Cập nhật lần cuối: 07-11-2026. File này được cập nhật mỗi khi
 | AL | ≥ 19 | cong (mục 6) | 0.01 | 10 | 0 |
 | CU | mọi độ dày | 6 | 0.7 | 6 | 0.7 |
 
-1. Thông số lấy từ file Excel theo mã DXF (tên file). Tên vật liệu tự nhận nhóm: SS (SS400, SPHC, SPCC, SPHCP…), SUS (SUS, inox, 2B, HL, 304…), AL (A5052, nhôm…), CU (đồng và đồng thau: 銅, 黄銅, **真鍮**, シンチュウ, BRASS, COPPER, C1100, C2801, C2600, C2680, C3604). Đồng thau dùng đúng thông số của CU trong bảng trên (piercing ngoài 6, joint ngoài 0.7, piercing lỗ 6, joint lỗ 0.7, mọi độ dày). Trên giao diện, mục "CU – Đồng / Đồng thau" áp dụng cho cả hai.
+1. Thông số lấy từ file Excel theo mã DXF (tên file). Tên vật liệu tự nhận nhóm: SS (SS400, SPHC, SPCC, SPHCP…), SUS (SUS, inox, 2B, HL, 304…), AL (A5052, **A1050, ＡＬその他**, nhôm…), CU (đồng và đồng thau: 銅, 黄銅, **真鍮**, シンチュウ, BRASS, COPPER, C1100, C2801, C2600, C2680, C3604). Đồng thau dùng đúng thông số của CU trong bảng trên (piercing ngoài 6, joint ngoài 0.7, piercing lỗ 6, joint lỗ 0.7, mọi độ dày). Trên giao diện, mục "CU – Đồng / Đồng thau" áp dụng cho cả hai. Chữ toàn góc (ＡＬ, ＳＵＳ…) được đổi sang chữ thường trước khi nhận dạng. Chữ `その他` đứng một mình không nhận dạng được.
 2. Mã không có trong Excel dùng vật liệu và độ dày ở hai ô nhập tay, ghi "Nhập Tay". Mỗi file có thông số riêng. Đổi hai ô chỉ áp dụng cho file đang chọn.
 3. Độ dày không hợp lệ hoặc nhóm không hợp lệ: báo lỗi.
 4. "Joint lỗ 0" của SS nghĩa là đường cắt khép kín nhưng vẫn áp dụng quy tắc vị trí joint (mục 5).
+5. **Khách hàng đặc biệt (từ 14-11-2026):** tool đọc cột khách hàng của file Excel (tiêu đề `得意先`, `客先`, `顧客`, `Khách hàng` hoặc `Customer`; ở mẫu CAD依頼書 cột G là mã số, cột H là tên). Mỗi khách có thể có quy tắc riêng, áp dụng cho mọi vật liệu và độ dày:
+   - **Khách 824 (武野工業): không tạo joint cho lỗ bên trong**, kể cả SUS, AL và CU. Độ rộng joint lỗ bằng 0, đường cắt lỗ khép kín như SS; vị trí điểm vào và thứ tự thử vị trí (mục 5) giữ nguyên. Joint của biên ngoài không đổi. Có cảnh báo "Khách hàng 824: không tạo joint cho lỗ bên trong".
+   - Khi bạn chỉnh tay vật liệu hoặc độ dày của một file có trong Excel, khách hàng vẫn lấy từ dòng Excel đó. File không có trong Excel (nhập tay hoàn toàn) coi như không có khách hàng đặc biệt.
+   - Dùng dòng lệnh: thêm mã khách làm tham số cuối, ví dụ `NC_Tool.exe --convert in.dxf out.nc SUS 1.5 824`.
 
 ## 3. Thứ tự đường cắt
 
@@ -56,7 +60,7 @@ Cập nhật lần cuối: 07-11-2026. File này được cập nhật mỗi khi
 2. Kẻ dấu (`9017`).
 3. Piercing xuyên màu xanh lá.
 4. Khe cắt (xanh lá).
-5. Các lỗ, theo diện tích tăng dần. Cùng diện tích thì chọn lỗ gần vị trí hiện tại nhất.
+5. Các lỗ, theo diện tích tăng dần. Cùng diện tích thì chọn lỗ gần vị trí hiện tại nhất. **Diện tích chênh nhau dưới 6% được coi là cùng diện tích** (từ 14-11-2026, ca 26-067424: lỗ dài cong 52.4 mm² và hai lỗ dài thẳng 49.6 mm² chênh 5.6%, mẫu T cắt lỗ dài cong, là lỗ gần nhất, trước).
 6. Biên ngoài, cắt cuối cùng.
 
 Trong cùng một nhóm, các đối tượng khác nhau được cắt theo thứ tự gần vị trí hiện tại nhất, bắt đầu từ gốc (0, 0).
@@ -74,13 +78,13 @@ Trong cùng một nhóm, các đối tượng khác nhau được cắt theo th�
 
 ### 4.3 Lỗ
 1. **Điểm vào ưu tiên:** phần nhô nhỏ của lỗ, tức nửa tròn hoặc mũi nhọn lồi (tổng góc ≥ 150°), bán kính nhỏ nhất. Điểm vào là đỉnh của phần nhô.
-2. Nhiều phần nhô cùng bán kính: lỗ nằm ngang vào đầu trái, lỗ nằm đứng vào đầu thấp. Lỗ nằm ngang khi bề rộng ≥ bề cao, tính theo kích thước thật.
+2. Nhiều phần nhô cùng bán kính: lỗ nằm ngang vào đầu trái. Lỗ nằm đứng: **lỗ không có joint** (rãnh ngắn, mục 5.1) vào đầu **trên** (ca 26-067424: rãnh đứng tâm-tâm 6 mm vào đầu trên, đục tại tâm cung trên); **lỗ có joint** vào đầu **thấp** (Vi_Du_1). Lỗ nằm ngang khi bề rộng ≥ bề cao, tính theo kích thước thật. Thứ tự các phần nhô theo bán kính rồi theo trục như trên, **không** theo hướng so với tâm lỗ (hướng trái, phải, dưới, trên chỉ dùng khi phải đổi vị trí do cách biên dạng khác < 3 mm).
 3. Lỗ hình tam giác (có 3 cạnh thẳng dài) vào giữa cạnh thẳng dài nhất.
 4. **Lỗ không có phần nhô (chữ nhật, chữ nhật bo góc, vuông) xét theo trục trước:** lỗ ngang hoặc vuông (rộng ≥ cao) vào giữa cạnh trái; lỗ đứng (cao > rộng) vào giữa cạnh đáy. Thứ tự trái, phải, đáy, đỉnh ở mục 5 chỉ dùng để chọn vị trí khác khi vị trí theo trục cách biên dạng khác ≤ 3 mm.
 5. **Điểm vào không bao giờ trùng đỉnh hoặc đầu đoạn:** nếu trùng (kể cả lệch dưới 0.001 mm do DXF) thì dời sang giữa cạnh. Không xuất đoạn cung dài 0. Sai số vị trí trái nhất hoặc thấp nhất khi so điểm vào là 0.01 mm.
 6. **Lỗ nghiêng (ca 26-062754, 26-065394):** lỗ toàn cạnh thẳng, không cạnh nào song song Ox hoặc Oy, không có phần nhô nhỏ và không phải tam giác (ví dụ hình chữ nhật xoay). Vào giữa **cạnh ngắn nhất** (sai số 0.01 mm); các cạnh ngắn bằng nhau thì lấy cạnh thấp nhất (trung điểm có Y nhỏ nhất). Đục vào trong lỗ vuông góc với cạnh đó. Trước 03-11-2026 quy tắc là "cạnh xuất phát từ đỉnh thấp nhất", trùng với quy tắc này ở ca 26-062754 nhưng sai ở ca 26-065394.
 8. **Điểm đục trong lỗ:** nếu bán kính của phần nhô nhỏ hơn piercing lỗ thì đục ở tâm cung đó. Ngược lại đục cách điểm vào bằng nhỏ hơn giữa piercing lỗ và nửa bề rộng vuông góc với hướng đục. Hướng đục đi vào trong lỗ.
-7. **Lỗ tròn:** điểm vào thử lần lượt bên trái, bên phải, phía dưới, phía trên và lấy vị trí đầu tiên cách biên dạng khác (biên ngoài và lỗ khác) hơn 3 mm. Mọi lỗ tròn đều áp dụng, kể cả lỗ nhỏ không có joint. Nếu cả bốn vị trí đều ≤ 3 mm thì vào bên trái (lỗ có joint thì chọn vị trí xa nhất). Ca 26-063378: lỗ φ6 tâm (5, 11) cách mép trái 2 mm nên vào bên phải tại (8, 11), piercing tại tâm.
+7. **Lỗ tròn:** điểm vào thử lần lượt bên trái, bên phải, phía dưới, phía trên và lấy vị trí đầu tiên cách biên dạng khác (biên ngoài và lỗ khác) **từ 3 mm trở lên** (từ 14-11-2026 tính cả đúng 3 mm; ca 26-067249: lỗ cách mép đúng 3 mm vẫn vào bên trái). Mọi lỗ tròn đều áp dụng, kể cả lỗ nhỏ không có joint. Nếu cả bốn vị trí đều ≤ 3 mm thì vào bên trái (lỗ có joint thì chọn vị trí xa nhất). Ca 26-063378: lỗ φ6 tâm (5, 11) cách mép trái 2 mm nên vào bên phải tại (8, 11), piercing tại tâm.
 9. Lỗ cắt ngược chiều kim đồng hồ, `G01G41` tới điểm vào. Lỗ tròn cắt `G03`.
 
 ### 4.4 Biên ngoài (cắt chiều kim đồng hồ, bù `G41`)
@@ -95,12 +99,12 @@ Piercing ngoài nằm ngoài biên, cách đúng bằng piercing ngoài, dẫn v
    - Cạnh dưới ≤ 100 mm: đục giữa cạnh dưới.
    - Cạnh dưới > 100 mm: đục cách đầu trái 40 mm.
 3. Đường cắt dừng trước điểm vào một đoạn bằng joint ngoài.
-4. **Tự xoay và dời gốc:** nếu không có cạnh thẳng đứng sát Oy thì thử xoay 90°, 180°, 270° (không lật). Phôi được dời về gốc (0, 0). Có cảnh báo khi xoay hoặc dời.
-   - **Dung sai:** cạnh được coi là thẳng đứng sát Oy (hoặc nằm ngang sát Ox) khi lệch không quá 0.01 mm. DXF hay có nhiễu cỡ 0.0001 mm làm cạnh hơi nghiêng; trước đây dung sai 0.0001 mm khiến tool xoay nhầm phôi (ca 26-062063). Cảnh báo dời gốc chỉ hiện khi dời trên 0.01 mm.
+4. **Không tự xoay hình (từ 14-11-2026):** DXF để hướng nào thì giữ nguyên hướng đó, không thử xoay 90°, 180°, 270° để tìm cạnh thẳng đứng như trước. Nếu không có cạnh thẳng đứng sát Oy thì áp dụng quy tắc phôi cong hoặc xiên (mục 7 bên dưới). Phôi vẫn được dời về gốc (0, 0), có cảnh báo khi dời.
+   - **Dung sai:** cạnh được coi là thẳng đứng sát Oy (hoặc nằm ngang sát Ox) khi lệch không quá 0.01 mm. DXF hay có nhiễu cỡ 0.0001 mm làm cạnh hơi nghiêng; trước đây dung sai 0.0001 mm khiến tool xoay nhầm phôi (ca 26-062063). Cảnh báo dời gốc chỉ hiện khi dời trên 0.01 mm. (Dung sai này vẫn dùng để nhận cạnh thẳng đứng, nhưng không còn dẫn đến việc xoay.)
 5. **Phôi tròn:** đục tại góc 225°, cắt một vòng `G02`, dừng trước điểm vào một đoạn joint ngoài.
 6. **Phôi gần tròn:** nếu đoạn trái nhất của biên ngoài là cung lớn (các cung cùng tâm, cùng bán kính quét tổng ≥ 180°) và điểm 225° của cung nằm trên cung, áp dụng quy tắc phôi tròn của mục 4.4.5: đục tại góc 225° của cung, cách ngoài theo hướng tâm, cắt `G02`, dừng trước điểm vào một đoạn joint ngoài. Có cảnh báo.
 7. **Phôi cong hoặc xiên (không xoay ra cạnh thẳng đứng nào, không thuộc mục 6):** lấy cạnh nằm ngay phía dưới đỉnh trái nhất (đoạn đi trước đỉnh đó theo chiều kim đồng hồ, bỏ qua cung bo R ≤ 5). Cạnh dài ≤ 100 mm: vào giữa cạnh. Cạnh dài > 100 mm: vào cách đầu gần đỉnh trái 40 mm, đo theo đường thẳng. Đục ngoài theo pháp tuyến ngoài của cạnh. Riêng cạnh **thẳng** dài hơn 100 mm: vào cách **đỉnh dưới** của cạnh 40 mm (đỉnh là giao của cạnh với cạnh kề phía dưới, bỏ qua cung bo góc R ≤ 5), không tính từ đầu trên. Ca 26-064456: cạnh trái nghiêng dài 199 mm, vào tại (36.1, 38.867), cách đỉnh dưới 40 mm.
-8. **Biên có đường cong lồi ra trái nhất (spline hoặc cung tròn; ca ViDu_Spline_1):** nếu điểm trái nhất của biên ngoài nằm trên spline hoặc cung và không có cạnh thẳng đứng chạm điểm đó, đồng thời có cạnh đáy thẳng nằm trên Ox dài từ 10 mm trở lên, thì không xoay phôi và đục ở cạnh đáy theo quy tắc cạnh đáy ở mục 4.4.2: đáy ≤ 100 mm đục giữa cạnh, đáy > 100 mm đục cách đầu trái 40 mm, đục ngoài biên theo piercing ngoài, đường cắt đi sang trái (chiều kim đồng hồ) và dừng trước điểm vào một đoạn joint ngoài. Gốc tọa độ: có spline thì lấy theo bao của các điểm điều khiển spline cùng các đường khác (ở ca ViDu_Spline_1 gốc không đổi); chỉ có cung thì dời theo bao thông thường. Có cảnh báo. Kích thước ở tiêu đề tính cả gốc (0, 0). Quy tắc này đứng trước quy tắc phôi cong ở mục 4.4.7, nhưng không áp dụng khi không có cạnh đáy thẳng trên Ox. Mở rộng cho cung theo yêu cầu ngày 24-10-2026.
+8. **Biên không có cạnh thẳng đứng chạm điểm trái nhất (đường cong, hoặc cạnh trái xiên; ca ViDu_Spline_1, 26-068005, 26-068007):** nếu không có cạnh thẳng đứng nào chạm điểm trái nhất của biên ngoài (điểm đó nằm trên spline, cung hoặc cạnh xiên), đồng thời có cạnh đáy thẳng nằm trên Ox dài từ 10 mm trở lên, thì không xoay phôi và đục ở cạnh đáy theo quy tắc cạnh đáy ở mục 4.4.2: đáy ≤ 100 mm đục giữa cạnh, đáy > 100 mm đục cách đầu trái 40 mm, đục ngoài biên theo piercing ngoài, đường cắt đi sang trái (chiều kim đồng hồ) và dừng trước điểm vào một đoạn joint ngoài. Gốc tọa độ: có spline thì lấy theo bao của các điểm điều khiển spline cùng các đường khác (ở ca ViDu_Spline_1 gốc không đổi); chỉ có cung thì dời theo bao thông thường. Có cảnh báo. Kích thước ở tiêu đề tính cả gốc (0, 0). Quy tắc này đứng trước quy tắc phôi cong ở mục 4.4.7, nhưng không áp dụng khi không có cạnh đáy thẳng trên Ox. Mở rộng cho cung theo yêu cầu ngày 24-10-2026, mở rộng cho cạnh trái xiên ngày 14-11-2026: ca 26-068005 (SS 3.2, đáy 40.229 → vào giữa cạnh đáy tại (80.229, −3) theo mục 4.4.2, vì không còn xoay phôi) và 26-068007 (SS 6, vào tại (33.347, −6)).
 
 ### 4.5 Phôi dài hẹp (cạnh ngắn ≤ 100, cạnh dài ≥ 1000)
 1. Bắt buộc có một điểm đánh dấu `LJ` và ít nhất một điểm `J` (TEXT kèm POINT, nằm trên cạnh dài). Thiếu một hoặc cả hai: báo lỗi nêu rõ tên điểm thiếu.
@@ -156,7 +160,7 @@ Piercing ngoài nằm ngoài biên, cách đúng bằng piercing ngoài, dẫn v
 ## 8. Giao diện và quy trình
 
 1. Kéo thả hoặc chọn file DXF. Chọn nhiều file bằng Shift hoặc Ctrl. File có lỗi hiện dấu X đỏ kèm lý do.
-2. Chọn một file Excel danh sách vật liệu (3 cột: Mã DXF, Vật liệu, Độ dày; đọc được mẫu CAD依頼書). Excel tự đọc lại khi bạn sửa file.
+2. Chọn một file Excel danh sách vật liệu (3 cột: Mã DXF, Vật liệu, Độ dày, thêm cột Khách hàng nếu có; đọc được mẫu CAD依頼書). Excel tự đọc lại khi bạn sửa file.
 3. Bấm **Lưu File .nc** hoặc **Lưu Tất Cả**: lưu file NC, gỡ file đã lưu khỏi danh sách (file DXF trên ổ đĩa giữ nguyên), bỏ chọn file Excel, rồi hiện hộp thoại thành công.
 4. Hai ô Vật Liệu và Độ Dày tự hiện đúng thông số của file đang chọn. Đổi hai ô chỉ áp dụng cho file đang chọn.
 5. Chế độ sáng hoặc tối được nhớ cho lần mở sau.
@@ -194,6 +198,10 @@ NC của phần mềm khớp từng dòng với các ví dụ sau (trừ dòng t
 | Vi_Du_21 (26-065394) | SS dày 3.2, như trên, thêm lỗ chữ nhật nghiêng vào giữa cạnh ngắn nhất (mục 4.3.6) |
 | Vi_Du_22 (26-065663) | SS dày 6, kegaki chữ L có một đầu cách biên 0.01 mm; chọn đúng đầu chạm biên để đục (mục 1.3, 4.1.3) |
 | Vi_Du_23 (ViDu_AL_t19) | AL dày 19, DXF đã vẽ sẵn đường dẫn vào piercing cong và khe joint 0.005 mm, cắt đúng theo đường vẽ (mục 6.3) |
+| Vi_Du_24 (26-068005) | SS dày 3.2, phôi cạnh trái xiên, không xoay, đục ở cạnh đáy trên Ox (mục 4.4.8), lỗ tròn φ32 vào bên trái |
+| Vi_Du_25 (26-068007) | SS dày 6, phôi cạnh trái xiên + cung lớn, đục ở cạnh đáy 40 mm từ đầu trái (mục 4.4.8) |
+| Vi_Du_26 (26-067249) | SS dày 1, lỗ tròn cách biên đúng 3 mm vẫn vào bên trái (mục 4.3.7) |
+| Vi_Du_27 (26-067424) | SUS dày 3, rãnh đứng ngắn không joint vào đầu trên (4.3.2); lỗ dài cong cắt trước hai rãnh thẳng vì diện tích chênh < 6% (mục 3) |
 | NC_Tool_Fix: 26-062754 | Thông số CU (6, 0.7), lỗ chữ nhật xoay 45° vào giữa cạnh từ đỉnh thấp nhất (mục 4.3.6) |
 | NC_Tool_Fix: 26-062203 | SS dày 6, kegaki hở chạm cạnh vát, kéo dài theo hướng đường (mục 4.1.3) |
 
@@ -221,3 +229,6 @@ NC của phần mềm khớp từng dòng với các ví dụ sau (trừ dòng t
 | 03-11-2026 | Lỗ nghiêng vào cạnh ngắn nhất, bằng nhau lấy cạnh thấp (4.3.6); nhiều cạnh đáy thì chọn cạnh trái nhất (4.4.2). Thêm Vi_Du_20, 21. (Mẫu T lần đầu của hai ca này có lỗ tròn vào bên phải do nhầm, mẫu gửi lại vào bên trái; không thêm quy tắc riêng cho lỗ tròn)
 | 04-11-2026 | Nối đầu mút chỉ giữa các đối tượng cùng màu, kegaki không dính vào biên ngoài (1.3), theo ca 26-065663. Thêm Vi_Du_22 |
 | 07-11-2026 | Dày ≥ 19: biên ngoài hở có sẵn đường dẫn vào piercing cong thì cắt theo đường vẽ (6.3); mỗi nút nối tối đa 2 đầu mút (1.3). Thêm Vi_Du_23 |
+| 14-11-2026 | Thêm khách hàng đặc biệt đọc từ cột 得意先 của Excel: khách 824 không tạo joint cho lỗ bên trong, mọi vật liệu (mục 2.5) |
+| 14-11-2026 | Vật liệu A1050 và ＡＬその他 tính như nhôm (mục 2.1); không tự xoay hình, giữ nguyên hướng DXF (mục 4.4.4) |
+| 14-11-2026 | Theo 4 ca Fix_Update: biên không có cạnh thẳng đứng chạm điểm trái nhất (cả cạnh xiên) đục ở cạnh đáy (4.4.8); lỗ tròn cách biên đúng 3 mm vẫn dùng (4.3.7); lỗ rãnh đứng không joint vào đầu trên, có joint vào đầu dưới, phần nhô không xếp theo hướng tâm (4.3.2); diện tích chênh < 6% coi là bằng nhau khi xếp thứ tự lỗ (3.5). Thêm Vi_Du_24..27 |

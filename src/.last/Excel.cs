@@ -13,7 +13,7 @@ namespace NCTool
 {
     public class MatRow
     {
-        public string Code, MaterialText, Group;
+        public string Code, MaterialText, Group, Customer;   // Customer: ma khach hang (cot 得意先 / Khach hang)
         public double Thick;
         public int Line;
     }
@@ -42,12 +42,13 @@ namespace NCTool
         // Vat lieu -> nhom (Quy_Tac_Laser.md muc 1)
         public static string GroupOf(string mat)
         {
-            string m = (mat ?? "").Trim().ToUpperInvariant().Replace(" ", "");
+            mat = (mat ?? "").Normalize(NormalizationForm.FormKC);   // chu toan goc (ＡＬ, ＳＵＳ...) -> chu thuong
+            string m = mat.Trim().ToUpperInvariant().Replace(" ", "");
             if (m == "") return null;
             if (m == "SS" || m == "SUS" || m == "AL" || m == "CU") return m;
             string na = NoAccent(mat).Replace(" ", "");
             string[] sus = { "SUS", "INOX", "2B", "HL", "304", "316", "430", "301", "310S", "410S", "VBI", "#400", "#1", "NO1", "ヘアライン", "片研", "両研", "エンボス" };
-            string[] al = { "A5052", "A505", "A2017", "AL", "NHOM", "アルミ" };
+            string[] al = { "A5052", "A505", "A2017", "A1050", "AL", "NHOM", "アルミ" };   // A1050, ＡＬその他 (AL sonota) tinh nhu nhom
             string[] cu = { "CU", "DONG", "THAU", "C1100", "C2801", "BRASS", "COPPER", "銅", "黄銅", "真鍮", "シンチュウ", "C2600", "C2680", "C3604" };   // CU gom ca dong thau (真鍮): thong so giong dong
             string[] ss = { "SS", "SPHC", "SPCC", "SECC", "SK", "S45C", "S48C", "SPC", "STPL", "STEN", "SUP", "NO205", "THEP", "鋼", "黒皮", "酸洗", "ボンデ", "みがき", "リボン", "ハイテン", "ベーナイト" };
             if (sus.Any(k => m.Contains(k) || na.Contains(k.ToLowerInvariant()))) return "SUS";
@@ -75,19 +76,20 @@ namespace NCTool
             else throw new NCError("Chỉ hỗ trợ file .xlsx hoặc .csv");
 
             // tim dong tieu de
-            int hdr = -1, cCode = 0, cMat = 1, cThk = 2;
+            int hdr = -1, cCode = 0, cMat = 1, cThk = 2, cCus = -1;
             for (int r = 0; r < Math.Min(grid.Count, 15) && hdr < 0; r++)
             {
-                int a = -1, b = -1, c = -1;
+                int a = -1, b = -1, c = -1, cu = -1;
                 for (int i = 0; i < grid[r].Count; i++)
                 {
                     string h = NoAccent(grid[r][i]).Trim();
                     if (h == "") continue;
+                    if (cu < 0 && Regex.IsMatch(h, @"得意先|客先|顧客|khach hang|customer")) { cu = i; continue; }
                     if (b < 0 && Regex.IsMatch(h, @"vat lieu|material|材質|材料|^vl$")) b = i;
                     else if (c < 0 && Regex.IsMatch(h, @"do day|day|thick|板厚|^t$|\(mm\)")) c = i;
                     else if (a < 0 && Regex.IsMatch(h, @"^(ma|code|ten|file|dxf|so don|図番|品番|作業)|\bma\b|dxf|ten file")) a = i;
                 }
-                if (a >= 0 && b >= 0 && c >= 0) { hdr = r; cCode = a; cMat = b; cThk = c; }
+                if (a >= 0 && b >= 0 && c >= 0) { hdr = r; cCode = a; cMat = b; cThk = c; cCus = cu; }
             }
             var seen = new HashSet<string>();
             for (int r = hdr + 1; r < grid.Count; r++)
@@ -108,7 +110,7 @@ namespace NCTool
                 if (g == null) { T.Warnings.Add("Dòng " + (r + 1) + " (" + code + "): vật liệu '" + mat + "' không nhận dạng được, bỏ qua"); continue; }
                 if (code == "") continue;
                 if (!seen.Add(Norm(code))) T.Warnings.Add("Mã " + code + " bị lặp trong Excel: dùng dòng đầu tiên");
-                else T.Rows.Add(new MatRow { Code = code, MaterialText = mat, Group = g, Thick = t, Line = r + 1 });
+                else T.Rows.Add(new MatRow { Code = code, MaterialText = mat, Group = g, Thick = t, Line = r + 1, Customer = cCus >= 0 ? cell(cCus) : "" });
             }
             if (T.Rows.Count == 0) throw new NCError("Không có dòng hợp lệ trong file Excel. Cần 3 cột: Mã DXF | Vật liệu | Độ dày.");
             return T;

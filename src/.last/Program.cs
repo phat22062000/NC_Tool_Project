@@ -256,13 +256,14 @@ namespace NCTool
         {
             f.Result = null; f.Row = null;
             if (f.Prims == null) return;
-            f.Row = (!f.Override && table != null) ? table.Find(f.Base) : null;
+            MatRow tr = table != null ? table.Find(f.Base) : null;   // dong Excel (van dung de lay khach hang khi nguoi dung chinh tay vat lieu / do day)
+            f.Row = !f.Override ? tr : null;
             if (f.Row == null)   // khong co trong Excel (hoac nguoi dung da chinh tay) -> dung vat lieu / do day rieng cua file
             {
                 if (f.MGroup == null) { f.MGroup = Groups[Math.Max(0, cmbMat.SelectedIndex)]; f.MThick = (double)nudThk.Value; }   // gia tri o thanh tren luc them file
-                f.Row = new MatRow { Code = f.Base, MaterialText = "Nhập Tay", Group = f.MGroup, Thick = f.MThick, Line = 0 };
+                f.Row = new MatRow { Code = f.Base, MaterialText = "Nhập Tay", Group = f.MGroup, Thick = f.MThick, Line = 0, Customer = tr != null ? tr.Customer : null };
             }
-            try { f.Error = null; f.Result = Core.Generate(f.Prims, f.Base, f.Row.Group, f.Row.Thick); }
+            try { f.Error = null; f.Result = Core.Generate(f.Prims, f.Base, f.Row.Group, f.Row.Thick, f.Row.Customer); }
             catch (NCError e) { f.Error = e.Message; }
             catch (Exception e) { f.Error = "Lỗi: " + e.Message; }
         }
@@ -386,15 +387,15 @@ namespace NCTool
                 try
                 {
                     var P = Core.ParseDxf(File.ReadAllBytes(args[1]));
-                    string bn = System.IO.Path.GetFileNameWithoutExtension(args[1]); string grp = args[3]; double th;
+                    string bn = System.IO.Path.GetFileNameWithoutExtension(args[1]); string grp = args[3]; double th; string cus = args.Length >= 6 ? args[5] : null;   // tuy chon: ma khach hang (vd 824)
                     if (args.Length >= 5) th = double.Parse(args[4], CultureInfo.InvariantCulture);
                     else
                     {
                         var row = MatTable.Load(args[3]).Find(bn);
                         if (row == null) throw new NCError("Mã " + bn + " không có trong Excel");
-                        grp = row.Group; th = row.Thick;
+                        grp = row.Group; th = row.Thick; cus = row.Customer;
                     }
-                    var r = Core.Generate(P, bn, grp, th);
+                    var r = Core.Generate(P, bn, grp, th, cus);
                     File.WriteAllText(args[2], r.Text, new ASCIIEncoding());
                     File.WriteAllText(args[2] + ".log", string.Join("\r\n", r.Warnings) + (Environment.GetEnvironmentVariable("NC_DEBUG") == "1" ? "\r\n" + Core.DebugAreas : ""), Encoding.UTF8);
                     return 0;
@@ -403,7 +404,7 @@ namespace NCTool
             }
             if (args.Length == 3 && args[0] == "--list")
             {
-                try { var T = MatTable.Load(args[1]); File.WriteAllLines(args[2], T.Rows.Select(r => r.Line + "|" + r.Code + "|" + r.MaterialText + "|" + r.Group + "|" + r.Thick).Concat(T.Warnings), Encoding.UTF8); }
+                try { var T = MatTable.Load(args[1]); File.WriteAllLines(args[2], T.Rows.Select(r => r.Line + "|" + r.Code + "|" + r.MaterialText + "|" + r.Group + "|" + r.Thick + "|" + r.Customer).Concat(T.Warnings), Encoding.UTF8); }
                 catch (Exception e) { File.WriteAllText(args[2], "ERR " + e.Message, Encoding.UTF8); }
                 return 0;
             }

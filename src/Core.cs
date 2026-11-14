@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace NCTool
 {
@@ -685,7 +686,7 @@ namespace NCTool
         // Danh sach diem vao theo thu tu uu tien: (1) nua tron / mui nhon loi (tong goc >= 150 do), ban kinh nho truoc,
         // cung ban kinh thi lo ngang: trai nhat, lo dung: thap nhat; (2) tam giac: giua canh thang dai nhat;
         // (3) quy tac cu (trai nhat / thap nhat); (4) trung diem cac canh va cung (dung khi can xoay joint)
-        static List<Pick> EntryCandidates(List<Seg> loop)
+        static List<Pick> EntryCandidates(List<Seg> loop, bool vertTop)
         {
             var res = new List<Pick>(); int n = loop.Count; if (n == 0) return res;
             Action<Pick> add = pk => { if (!res.Any(x => Dist(x.Pt, pk.Pt) < 1e-6)) res.Add(pk); };
@@ -707,7 +708,8 @@ namespace NCTool
                     return new { r, x = gr[0].C[0] + r * Math.Cos(a0 + sw / 2), y = gr[0].C[1] + r * Math.Sin(a0 + sw / 2), cx = gr[0].C[0], cy = gr[0].C[1] };
                 }).ToList();
             var ordered = horiz ? caps.OrderBy(c => Math.Round(c.r, 3)).ThenBy(c => Math.Round(c.x, 4)).ThenBy(c => c.y)
-                                : caps.OrderBy(c => Math.Round(c.r, 3)).ThenBy(c => Math.Round(c.y, 4)).ThenBy(c => c.x);
+                                : (vertTop ? caps.OrderBy(c => Math.Round(c.r, 3)).ThenByDescending(c => Math.Round(c.y, 4)).ThenBy(c => c.x)   // lo dung khong joint: dau tren truoc (ca 26-067424)
+                                           : caps.OrderBy(c => Math.Round(c.r, 3)).ThenBy(c => Math.Round(c.y, 4)).ThenBy(c => c.x));   // lo dung co joint: dau duoi truoc (Vi_Du_1)
             var radii = ordered.Select(c => Math.Round(c.r, 3)).Distinct().ToList();
             foreach (var c in ordered) add(new Pick { Pt = Pt(c.x, c.y), Dir = Pt((c.cx - c.x) / c.r, (c.cy - c.y) / c.r), R = c.r, Tier = radii.IndexOf(Math.Round(c.r, 3)) });
             bool tri = false;
@@ -1003,12 +1005,18 @@ namespace NCTool
             public double[] Pp, St; public List<Seg> Segs; public int Code; public bool Circle, Closed, G41, KCircle, HasJoint; public double Area, Joint, Cx, Cy, Rad, StartAng;
         }
 
-        public static Result Generate(Prims prims0, string name, string group, double t)
+        // Khach hang dac biet (cot 得意先 trong Excel). 824: khong tao joint cho lo ben trong (moi vat lieu, ke ca SUS, AL, CU)
+        public static bool NoHoleJointCustomer(string customer) { return !string.IsNullOrEmpty(customer) && Regex.IsMatch(customer, @"^\s*0*824(\D|$)"); }
+
+        public static Result Generate(Prims prims0, string name, string group, double t) { return Generate(prims0, name, group, t, null); }
+
+        public static Result Generate(Prims prims0, string name, string group, double t, string customer)
         {
             double pierceOut, jointOut, pierceHole;
             Params(group, t, out pierceOut, out jointOut, out pierceHole);
             double jointHole = (group.ToUpperInvariant() == "SUS" && t >= 19 - 1e-9) ? 1.0 : (group.ToUpperInvariant() == "AL" && t >= 19 - 1e-9) ? 0 : jointOut;   // do rong joint lo (SUS >= 19: 1.0, AL >= 19: 0)
             var warnings = new List<string>(prims0.Warnings);
+            if (NoHoleJointCustomer(customer)) { jointHole = 0; warnings.Add("Khách hàng 824: không tạo joint cho lỗ bên trong"); }
             bool isSS = group.ToUpperInvariant() == "SS";
             DrawnLeadMode = t >= 19 - 1e-9;
 
@@ -1060,18 +1068,20 @@ namespace NCTool
                     double x0 = a0.Bb.X0, y0 = a0.Bb.Y0;
                     var atLeft = a0.Outer.Where(g => LoopBBox(new List<Seg> { g }).X0 <= x0 + 1e-2).ToList();
                     bool hasBottom = a0.Outer.Any(g => !g.Spl && g.T == 'L' && Math.Abs(g.P[1] - y0) < 1e-2 && Math.Abs(g.Q[1] - y0) < 1e-2 && Math.Abs(g.P[0] - g.Q[0]) >= 10);
-                    if (atLeft.Count > 0 && atLeft.All(g => g.Spl || g.T == 'A') && hasBottom)
+                    if (atLeft.Count > 0 && !atLeft.Any(g => g.T == 'L' && !g.Spl && Math.Abs(g.P[0] - x0) < 1e-2 && Math.Abs(g.Q[0] - x0) < 1e-2 && Math.Abs(g.P[1] - g.Q[1]) > 1e-6) && hasBottom)
                     {
                         double hx = x0, hy = y0;
                         foreach (var h in prims0.Hull) { hx = Math.Min(hx, h[0]); hy = Math.Min(hy, h[1]); }
                         double[] shift = new double[] { 0, 0 }; Prims Pr = prims0;
                         if (Math.Abs(hx) > 1e-4 || Math.Abs(hy) > 1e-4) { shift = new[] { -hx, -hy }; Pr = Translate(prims0, shift[0], shift[1]); }
                         P = Pr; A = Analyze(Pr); chShift = shift; splBottom = true;
-                        warnings.Add("Điểm trái nhất của biên ngoài là đường cong (spline/cung), không có cạnh thẳng đứng chạm điểm đó: không xoay phôi, đục ở cạnh đáy nằm trên Ox");
+                        warnings.Add("Biên ngoài không có cạnh thẳng đứng chạm điểm trái nhất (trái là đường cong hoặc cạnh xiên): không xoay phôi, đục ở cạnh đáy nằm trên Ox");
                     }
                 }
             }
-            for (int rot = 0; rot < 4 && A == null; rot++)
+            // Khong tu xoay hinh (tu 14-11-2026): DXF the nao thi giu nguyen huong the do. Chi thu huong goc (rot = 0);
+            // khong co canh thang dung sat Oy thi dung quy tac phoi cong / xien ben duoi (noLeft)
+            for (int rot = 0; rot < 1 && A == null; rot++)
             {
                 Prims Pr = Rotate(prims0, rot); Analysis An = Analyze(Pr); double[] shift = new double[] { 0, 0 };
                 if (Math.Abs(An.Bb.X0) > 1e-4 || Math.Abs(An.Bb.Y0) > 1e-4)
@@ -1133,11 +1143,11 @@ namespace NCTool
                     {
                         double[] angs = { Math.PI, 0, 1.5 * Math.PI, 0.5 * Math.PI };
                         var dl = angs.Select(an => new { ang = an, d = MinDist(contours, c, Pt(c.Cx + c.R * Math.Cos(an), c.Cy + c.R * Math.Sin(an))) }).ToList();
-                        var okc = dl.FirstOrDefault(x => x.d > 3 + 1e-9);
+                        var okc = dl.FirstOrDefault(x => x.d >= 3 - 1e-6);
                         double chosen = okc != null ? okc.ang : (ch.HasJoint ? dl.OrderByDescending(x => x.d).First().ang : angs[0]);
                         string cs = (2 * c.R).ToString("0.##", Inv), what = ch.HasJoint ? "joint" : "điểm vào";
                         if (okc == null) { if (ch.HasJoint) warnings.Add("Joint lỗ tròn φ" + cs + " tại (" + Fmt(c.Cx) + ", " + Fmt(c.Cy) + ") cách biên dạng khác " + Fmt(dl.Max(x => x.d)) + " mm (≤ 3 mm), không có vị trí tốt hơn"); }
-                        else if (dl[0].d <= 3 + 1e-9) warnings.Add("Đã xoay " + what + " lỗ tròn φ" + cs + " tại (" + Fmt(c.Cx) + ", " + Fmt(c.Cy) + ") sang vị trí khác vì vị trí ưu tiên cách biên dạng khác ≤ 3 mm");
+                        else if (dl[0].d < 3 - 1e-6) warnings.Add("Đã xoay " + what + " lỗ tròn φ" + cs + " tại (" + Fmt(c.Cx) + ", " + Fmt(c.Cy) + ") sang vị trí khác vì vị trí ưu tiên cách biên dạng khác ≤ 3 mm");
                         ch.StartAng = chosen; ch.St = Pt(c.Cx + c.R * Math.Cos(chosen), c.Cy + c.R * Math.Sin(chosen));
                         double lenp = c.R < pierceHole ? c.R : pierceHole;
                         ch.Pp = Pt(ch.St[0] + (c.Cx - ch.St[0]) / c.R * lenp, ch.St[1] + (c.Cy - ch.St[1]) / c.R * lenp);
@@ -1161,19 +1171,19 @@ namespace NCTool
                 double jt = (hasJ && !isSS) ? jointHole : 0;
                 // Diem vao: uu tien phan bien dang nho nhot ra; lo hinh tam giac vao giua canh thang dai nhat.
                 // Joint nam gan (<= 3 mm) bien ngoai hoac lo khac thi xoay sang diem vao khac.
-                var cands = EntryCandidates(ccw);
+                var cands = EntryCandidates(ccw, !hasJ);
                 Pick sel = cands[0];
                 if (hasJ)
                 {
                     // Thu tu uu tien vi tri joint: (1) cach cac bien dang xung quanh > 3 mm; (2) ben trai, ben phai, phia duoi, phia tren
                     var bbj = LoopBBox(ccw); double mcx = (bbj.X0 + bbj.X1) / 2, mcy = (bbj.Y0 + bbj.Y1) / 2;
                     var info = cands.Select(cd => new { cd, d = MinDist(contours, L, cd.Pt), rank = DirRank(cd.Pt, mcx, mcy) }).ToList();
-                    var okList = info.Where(x => x.d > 3 + 1e-9).OrderBy(x => x.cd.Tier).ThenBy(x => x.rank).ToList();
-                    var wish = info.OrderBy(x => x.cd.Tier).ThenBy(x => x.rank).First();   // vi tri mong muon neu khong xet khoang cach
+                    var okList = info.Where(x => x.d >= 3 - 1e-6).OrderBy(x => x.cd.Tier).ThenBy(x => x.cd.Tier < 10 ? 0 : x.rank).ToList();   // phan nho (cap): theo thu tu truc, khong theo huong tam
+                    var wish = info.OrderBy(x => x.cd.Tier).ThenBy(x => x.cd.Tier < 10 ? 0 : x.rank).First();   // vi tri mong muon neu khong xet khoang cach
                     if (okList.Count > 0)
                     {
                         sel = okList[0].cd;
-                        if (wish.d <= 3 + 1e-9 && wish.cd != sel) warnings.Add("Đã xoay joint lỗ về điểm (" + Fmt(sel.Pt[0]) + ", " + Fmt(sel.Pt[1]) + ") vì vị trí ưu tiên cách biên dạng khác ≤ 3 mm");
+                        if (wish.d < 3 - 1e-6 && wish.cd != sel) warnings.Add("Đã xoay joint lỗ về điểm (" + Fmt(sel.Pt[0]) + ", " + Fmt(sel.Pt[1]) + ") vì vị trí ưu tiên cách biên dạng khác ≤ 3 mm");
                     }
                     else
                     {
@@ -1307,7 +1317,7 @@ namespace NCTool
             var remH = holes.OrderBy(h => h.Area).ToList();
             while (remH.Count > 0)
             {
-                var grp = remH.Where(h => Math.Abs(h.Area - remH[0].Area) < 1e-3).ToList();
+                var grp = remH.Where(h => Math.Abs(h.Area - remH[0].Area) < Math.Max(1e-3, 0.06 * remH[0].Area)).ToList();
                 Op hh = grp.OrderBy(x => Dist(pos, x.Pp)).First();
                 remH.Remove(hh);
                 pierce(hh.Pp, hh.Code);
